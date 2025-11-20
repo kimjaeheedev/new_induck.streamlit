@@ -2,6 +2,10 @@ import streamlit as st
 import duckdb
 import pandas as pd
 
+
+conn = duckdb.connect("madang.db")
+
+
 # ----------------------------
 # 🧾 고객 주문 내역 조회 (위쪽)
 # ----------------------------
