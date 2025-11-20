@@ -99,4 +99,102 @@ if st.button("조회 시작") or len(input_name) > 0:
 
     except Exception as e:
         st.error(f"조회 중 오류 발생: {e}")
+  
+
+# -------------------------------------------------
+# 🔽 거래(Orders) 입력 섹션
+# -------------------------------------------------
+st.markdown("## 🧾 거래(Orders) 입력")
+
+try:
+    # 1) 고객 / 도서 목록 불러오기
+    cust_df = conn.execute("SELECT custid, name FROM Customer ORDER BY custid").df()
+    book_df = conn.execute("SELECT bookid, bookname, price FROM Book ORDER BY bookid").df()
+
+    if cust_df.empty:
+        st.warning("⚠️ Customer 테이블에 데이터가 없습니다. 먼저 고객을 등록해주세요.")
+    elif book_df.empty:
+        st.warning("⚠️ Book 테이블에 데이터가 없습니다. 먼저 도서를 등록해주세요.")
+    else:
+        customers = cust_df.to_dict("records")
+        books = book_df.to_dict("records")
+
+        with st.form("order_form"):
+            # 고객 선택
+            selected_customer = st.selectbox(
+                "👤 고객 선택",
+                customers,
+                format_func=lambda c: f"{c['custid']} - {c['name']}",
+            )
+
+            # 도서 선택
+            selected_book = st.selectbox(
+                "📚 도서 선택",
+                books,
+                format_func=lambda b: f"{b['bookid']} - {b['bookname']} (정가 {b['price']})",
+            )
+
+            # 기본 판매가 = 책 정가
+            default_price = 0
+            if selected_book is not None and "price" in selected_book and pd.notna(selected_book["price"]):
+                try:
+                    default_price = int(selected_book["price"])
+                except Exception:
+                    default_price = 0
+
+            saleprice = st.number_input(
+                "💲 판매가",
+                min_value=0,
+                value=default_price,
+                step=1000
+            )
+
+            # 주문일 (기본값: 오늘)
+            orderdate = st.date_input("📅 주문일", value=pd.Timestamp.today().date())
+
+            submitted = st.form_submit_button("💾 거래 저장")
+
+            if submitted:
+                try:
+                    # 새 orderid 할당
+                    new_orderid = conn.execute(
+                        "SELECT COALESCE(MAX(orderid), 0) + 1 AS new_id FROM Orders"
+                    ).fetchone()[0]
+
+                    # INSERT 실행
+                    conn.execute(
+                        """
+                        INSERT INTO Orders (orderid, custid, bookid, saleprice, orderdate)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        [
+                            new_orderid,
+                            selected_customer["custid"],
+                            selected_book["bookid"],
+                            saleprice,
+                            orderdate
+                        ],
+                    )
+
+                    st.success(f"✅ 새 주문이 저장되었습니다. (orderid = {new_orderid})")
+
+                    # 방금 저장한 주문 간단히 보여주기
+                    last_row = conn.execute(
+                        """
+                        SELECT O.orderid, C.name AS 고객명, B.bookname AS 도서명,
+                               O.saleprice, O.orderdate
+                        FROM Orders O
+                        JOIN Customer C ON O.custid = C.custid
+                        JOIN Book B ON O.bookid = B.bookid
+                        WHERE O.orderid = ?
+                        """,
+                        [new_orderid],
+                    ).df()
+                    st.dataframe(last_row)
+
+                except Exception as e:
+                    st.error(f"❌ 거래 저장 중 오류 발생: {e}")
+
+except Exception as e:
+    st.error(f"거래 입력 섹션 로딩 중 오류: {e}")
 
